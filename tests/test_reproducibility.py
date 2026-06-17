@@ -3,7 +3,7 @@
 import pandas as pd
 
 from corridor_sim.config import build_default_config
-from corridor_sim.montecarlo import run_cell, run_sweep
+from corridor_sim.montecarlo import _stable_idx, run_cell, run_sweep
 
 
 def _small_cfg():
@@ -13,6 +13,17 @@ def _small_cfg():
     cfg.grid.regimes = ["persistent"]
     cfg.trials = 800
     return cfg
+
+
+def test_cell_seed_is_process_stable():
+    """Per-cell seeds must not depend on Python's salted str hash (PYTHONHASHSEED).
+
+    These constants are pinned: if the cell index ever reverts to the built-in ``hash()``,
+    the value becomes per-process random and this fails — catching the reproducibility
+    regression that in-process equality checks (below) cannot see.
+    """
+    assert _stable_idx("MX_MXN") == 778325625
+    assert _stable_idx("persistent") == 300870985
 
 
 def test_cell_reproducible():

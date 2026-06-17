@@ -9,6 +9,7 @@ cell is a single vectorised pass.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 
 import numpy as np
@@ -40,11 +41,22 @@ PCTS = [5, 25, 50, 75, 95]
 # --------------------------------------------------------------------------- #
 # RNG factory (spec §6.4) — deterministic per-cell seeds, no global state
 # --------------------------------------------------------------------------- #
+def _stable_idx(s: str) -> int:
+    """Process-stable hash of a string → int in [0, 2**31).
+
+    ``hash()`` on str is salted per process (PYTHONHASHSEED), which would make per-cell
+    seeds — and therefore every result — irreproducible across separate CLI invocations.
+    A fixed digest keeps runs reproducible from the master seed alone (spec §6.4).
+    """
+
+    return int.from_bytes(hashlib.blake2b(s.encode("utf-8"), digest_size=4).digest(), "big") % (2**31)
+
+
 def cell_rng(master_seed: int, corridor: str, regime: str, T: float) -> np.random.Generator:
     """Derive a deterministic per-cell RNG from the master seed."""
 
-    corr_idx = abs(hash(corridor)) % (2**31)
-    reg_idx = abs(hash(regime)) % (2**31)
+    corr_idx = _stable_idx(corridor)
+    reg_idx = _stable_idx(regime)
     t_int = int(round(float(T) * 1000))
     ss = np.random.SeedSequence([int(master_seed), corr_idx, reg_idx, t_int])
     return np.random.default_rng(ss)
