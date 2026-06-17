@@ -159,24 +159,32 @@
 
   <p class="sub"><strong>Point 2 — it compounds, fragmented stable-to-stable does not.</strong> Cross-border cost
   falls toward a floor as corridors aggregate at the unified USTRY hub. A steelman stable-to-stable competitor
-  routes through a USDC hub; with a single unified stablecoin it nearly keeps up (losing only by yield), but as
-  stablecoins diversify its liquidity fragments across shallow pools (3 and 10 shown) that cannot aggregate — so
-  it stays a large multiple above C (≈2.5× at 10 stablecoins) and never reaches the floor.</p>
+  routes through a USDC hub; with one unified stablecoin it nearly keeps up (losing only by yield), but with a
+  stablecoin per market its liquidity can never consolidate — turnover per pool stays flat, β never nets — so its
+  cost flatlines while C keeps falling, and the gap <em>widens</em> with the network.</p>
   <img src="data:image/png;base64,{{ charts.network.hero }}" alt="cross-border compounding">
   <table>
-    <thead><tr><th>N corridors</th><th>C — USTRY (bps)</th><th>B — 3 stablecoins</th><th>B — 10 stablecoins</th><th>gap vs C (3)</th><th>gap vs C (10)</th></tr></thead>
+    <thead><tr><th>N corridors</th><th>C — USTRY (bps)</th><th>B — 10 stablecoins</th><th>B — coin per market</th><th>gap (grows) vs C</th></tr></thead>
     <tbody>
     {% for r in network_rows %}
-      <tr><td>{{ r.n }}</td><td>{{ "%.1f"|format(r.C) }}</td><td>{{ "%.1f"|format(r.B_s3) }}</td>
-        <td>{{ "%.1f"|format(r.B_s10) }}</td><td>{{ "%.1f"|format(r.gap_s3) }}</td>
-        <td>{{ "%.1f"|format(r.gap_s10) }}</td></tr>
+      <tr><td>{{ r.n }}</td><td>{{ "%.1f"|format(r.C) }}</td><td>{{ "%.1f"|format(r.B_s10) }}</td>
+        <td>{{ "%.1f"|format(r.B_grow) }}</td><td>{{ "%.1f"|format(r.gap_grow) }}</td></tr>
     {% endfor %}
     </tbody>
   </table>
   <img src="data:image/png;base64,{{ charts.network.beta }}" alt="hub imbalance netting">
+
+  <p class="sub"><strong>Network subsidy.</strong> Corridors launch staggered and ramp to maturity; subsidy is
+  funded per corridor and summed. C's subsidy <strong>retires</strong> (total ${{ "%.1f"|format(network_subsidy.C.total_m) }}M,
+  curve plateaus) as the hub aggregates; a fragmenting stable-to-stable network never retires
+  (${{ "%.1f"|format(network_subsidy.B_grow.total_m) }}M and climbing) and the incumbent runs away
+  (${{ "%.0f"|format(network_subsidy.A.total_m) }}M).</p>
+  <img src="data:image/png;base64,{{ charts.network.subsidy }}" alt="network subsidy burn-down">
+
   <div class="note">Assumptions (adjustable): one shared hub book (T_hub aggregates ΣV); β_hub nets as
-  β_floor + (β₀−β_floor)/√N_eff with β_floor = 0.2; stablecoin fragmentation splits B's hub flow and netting.
-  Deferred (docs/TODO.md): explicit spoke price-impact; calibrating the fragmentation count.</div>
+  β_floor + (β₀−β_floor)/√N_eff with β_floor = 0.2; B fragments a stablecoin per market (grows with N). The
+  network subsidy runs on a maturity-reaching ramp so retirement is visible (§7 uses the early-stage ramp).
+  Deferred (docs/TODO.md): explicit spoke price-impact; calibrating the fragmentation rate.</div>
 
   <h2>10 · Sensitivity (tornado)</h2>
   <p class="sub">One-at-a-time effect of each parameter on median <code>C_total</code> for the reserved ramp

@@ -59,6 +59,21 @@ class NetworkConfig:
     # TODO #2 — stablecoin fragmentation: B's USDC hub splits across this many stablecoins,
     # so its flow can't aggregate into one deep pool. C's USTRY reserve is always unified (1).
     b_frag_levels: tuple[int, ...] = (3, 10)
+    # fragmentation that GROWS with the network: each new market spawns its own stablecoin,
+    # so S(N) = round(b_frag_rate · N). At rate 1.0 every corridor adds a coin → B never
+    # consolidates (turnover per pool stays flat, β never nets). Reality is between this and
+    # the unified steelman (S=1).
+    b_frag_rate: float = 1.0
+    # subsidy-view ramp: the network burn-down runs to MATURE turnover so retirement is
+    # visible (the §7 early-stage ramp stops at 1×/day, too thin for anyone to break even).
+    sub_t_start: float = 0.01
+    sub_t_mature: float = 20.0
+    sub_horizon: int = 24
+
+
+def frag_growing(n: int, nc: NetworkConfig) -> int:
+    """Number of stablecoins B fragments across when fragmentation grows with the network."""
+    return max(1, round(nc.b_frag_rate * max(1, int(n))))
 
 
 def hub_beta(n: int, nc: NetworkConfig, fragments: int = 1) -> float:
@@ -149,18 +164,28 @@ def corridor_costs(cfg: Config, corridor: str, n: int, nc: NetworkConfig) -> dic
     cx2 = _hop_sfx(cfg, dst, "C_xborder", T=Th, beta=Bh, sigma=sig_dst, y_local=y_dst, y_ustry=y_ustry)
     C_xborder = s_op + cx1 + cx2
 
+    # incumbent cross-border: two off-chain venue hops (no hub)
+    A_xborder = (s_op + _hop_sfx(cfg, corridor, "A", T=T0, beta=nc.beta_spoke, sigma=sig)
+                 + _hop_sfx(cfg, dst, "A", T=T0, beta=nc.beta_spoke, sigma=sig_dst))
+
     row = {
         "corridor": corridor, "n": int(n), "T_hub": Th, "beta_hub": Bh,
-        "A": A, "B_local": B_local, "C_local_ustry": C_local_ustry,
+        "A": A, "A_xborder": A_xborder, "B_local": B_local, "C_local_ustry": C_local_ustry,
         "C_local_usdc": C_local_usdc, "C_xborder": C_xborder,
     }
     #   B steelman: local→USDC→local, but the USDC hub fragments across S stablecoins.
-    for S in (1,) + tuple(nc.b_frag_levels):
+    def _b_xborder(S: int) -> float:
         Th_b = hub_turnover(n, nc, fragments=S)
         Bh_b = hub_beta(n, nc, fragments=S)
         bx1 = _hop_sfx(cfg, corridor, "B", T=Th_b, beta=Bh_b, sigma=sig)
         bx2 = _hop_sfx(cfg, dst, "B", T=Th_b, beta=Bh_b, sigma=sig_dst)
-        row[f"B_xborder_s{S}"] = s_op + bx1 + bx2
+        return s_op + bx1 + bx2
+
+    for S in (1,) + tuple(nc.b_frag_levels):
+        row[f"B_xborder_s{S}"] = _b_xborder(S)
+    # fragmentation growing with the network (a stablecoin per market)
+    row["B_xborder_grow"] = _b_xborder(frag_growing(n, nc))
+    row["frag_grow"] = frag_growing(n, nc)
     return row
 
 
@@ -172,3 +197,77 @@ def network_sweep(cfg: Config, nc: NetworkConfig | None = None) -> pd.DataFrame:
         for corridor in nc.corridors[:n]:
             rows.append(corridor_costs(cfg, corridor, n, nc))
     return pd.DataFrame(rows)
+
+
+def _xborder_cost(cfg: Config, corridor: str, dst: str, *, kind: str, t_spoke: float,
+                  T_hub: float, beta_hub: float, nc: NetworkConfig) -> float:
+    """Cross-border all-in cost (bps) given an explicit hub state. kind ∈ {A, B, C}."""
+    s_op = float(cfg.params.s_op.point) * BPS
+    y_ustry = float(cfg.params.y_ustry.point)
+    sig, sigd = _sigma_of(cfg, corridor), _sigma_of(cfg, dst)
+    yl, yld = _y_local_of(cfg, corridor), _y_local_of(cfg, dst)
+    if kind == "A":  # incumbent: two off-chain venue hops
+        return s_op + _hop_sfx(cfg, corridor, "A", T=t_spoke, beta=nc.beta_spoke, sigma=sig) \
+            + _hop_sfx(cfg, dst, "A", T=t_spoke, beta=nc.beta_spoke, sigma=sigd)
+    if kind == "C":  # yield legs through the unified USTRY hub
+        return s_op + _hop_sfx(cfg, corridor, "C_xborder", T=T_hub, beta=beta_hub, sigma=sig, y_local=yl, y_ustry=y_ustry) \
+            + _hop_sfx(cfg, dst, "C_xborder", T=T_hub, beta=beta_hub, sigma=sigd, y_local=yld, y_ustry=y_ustry)
+    # B: stable legs through the (fragmented) USDC hub
+    return s_op + _hop_sfx(cfg, corridor, "B", T=T_hub, beta=beta_hub, sigma=sig) \
+        + _hop_sfx(cfg, dst, "B", T=T_hub, beta=beta_hub, sigma=sigd)
+
+
+def network_subsidy(cfg: Config, nc: NetworkConfig | None = None):
+    """Cumulative network subsidy over time as corridors launch staggered and ramp.
+
+    Per-corridor subsidy summed at the network level (Q: per-corridor, sum). C routes the
+    unified USTRY hub; B fragments a stablecoin per market (frag grows with N). Returns
+    (curve DataFrame, launch schedule dict, retire summary dict).
+    """
+    import copy
+
+    from .subsidy import turnover_curve
+
+    nc = nc or NetworkConfig()
+    target_bps = cfg.subsidy.target_bps
+    K = cfg.params.K.point
+    # run the burn-down on a maturity-reaching ramp (not the §7 early-stage ramp) so the
+    # retire/not-retire contrast is visible.
+    cfg_ramp = copy.deepcopy(cfg)
+    cfg_ramp.subsidy.t_start = nc.sub_t_start
+    cfg_ramp.subsidy.t_mature = nc.sub_t_mature
+    cfg_ramp.subsidy.horizon_months = nc.sub_horizon
+    horizon = nc.sub_horizon
+    ramp = turnover_curve(cfg_ramp)  # per-corridor turnover by age
+    corridors = nc.corridors
+    gap = max(1, horizon // len(corridors))
+    launch = {c: min(i * gap, horizon) for i, c in enumerate(corridors)}
+
+    cum = {"A": 0.0, "C": 0.0, "B_grow": 0.0}
+    rows = []
+    for m in range(horizon + 1):
+        live = [c for c in corridors if launch[c] <= m]
+        n = len(live)
+        t_spoke = {c: float(ramp[min(m - launch[c], len(ramp) - 1)]) for c in live}
+        agg = sum(t_spoke.values()) / nc.k_hub_ratio  # = ΣV / K_hub (unified)
+        Sg = frag_growing(n, nc)
+        hub = {"C": (agg, hub_beta(n, nc, 1)), "B_grow": (agg / Sg, hub_beta(n, nc, Sg))}
+        day = {k: 0.0 for k in cum}
+        for i, c in enumerate(live):
+            dst = live[(i + 1) % n] if n > 1 else c
+            V = t_spoke[c] * K
+            for kind, key in (("A", "A"), ("C", "C"), ("B", "B_grow")):
+                Th, Bh = hub.get(key, (t_spoke[c], nc.beta_spoke))
+                cost = _xborder_cost(cfg, c, dst, kind=kind, t_spoke=t_spoke[c], T_hub=Th, beta_hub=Bh, nc=nc)
+                day[key] += max(0.0, (cost - target_bps) / BPS) * V
+        for k in cum:
+            cum[k] += day[k] * DAYS_PER_MONTH
+            rows.append({"month": m, "model": k, "cumulative_subsidy": cum[k],
+                         "daily_subsidy": day[k], "live": n})
+    curve = pd.DataFrame(rows)
+    # "retires" = daily subsidy has fallen ~to zero by the horizon
+    summary = {}
+    for k in cum:
+        tail = curve[(curve.model == k) & (curve.month >= horizon - 1)]["daily_subsidy"]
+        summary[k] = {"total_subsidy": cum[k], "retires": bool(tail.max() < 1.0)}
+    return curve, launch, summary

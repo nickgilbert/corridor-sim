@@ -4,7 +4,13 @@ import pytest
 
 from corridor_sim.calibrate import calibrate_and_apply
 from corridor_sim.config import build_default_config
-from corridor_sim.network import NetworkConfig, hub_beta, hub_turnover, network_sweep
+from corridor_sim.network import (
+    NetworkConfig,
+    hub_beta,
+    hub_turnover,
+    network_subsidy,
+    network_sweep,
+)
 
 
 @pytest.fixture(scope="module")
@@ -54,3 +60,25 @@ def test_point2_compounding_needs_unfragmented_reserve(cfg):
         assert mx.loc[n, "B_xborder_s3"] > mx.loc[n, "C_xborder"]
     # the unified steelman (1 stablecoin) is the only B that nearly catches C — by yield alone
     assert abs(mx["B_xborder_s1"].iloc[-1] - mx["C_xborder"].iloc[-1]) < 1.0
+
+
+def test_growing_fragmentation_gap_widens(cfg):
+    # a stablecoin per market (S = N): B's cross-border cost flatlines (no aggregation),
+    # while C keeps falling — so the gap to C *widens* with the network.
+    nc = NetworkConfig()
+    mx = network_sweep(cfg, nc)
+    mx = mx[mx.corridor == "MX_MXN"].set_index("n")
+    gap1 = mx["B_xborder_grow"].iloc[0] - mx["C_xborder"].iloc[0]
+    gap_last = mx["B_xborder_grow"].iloc[-1] - mx["C_xborder"].iloc[-1]
+    assert gap_last > gap1
+    # B_grow barely moves once each market has its own coin (turnover per pool flat)
+    assert abs(mx["B_xborder_grow"].iloc[-1] - mx["B_xborder_grow"].iloc[1]) < 1.0
+
+
+def test_network_subsidy_C_retires_B_does_not(cfg):
+    _, _, summ = network_subsidy(cfg, NetworkConfig())
+    assert summ["C"]["retires"]            # unified hub aggregates → C reaches break-even
+    assert not summ["B_grow"]["retires"]   # fragmenting stablecoins never aggregate
+    assert not summ["A"]["retires"]
+    # C's total network subsidy is a small fraction of the fragmented-B and incumbent bills
+    assert summ["C"]["total_subsidy"] < summ["B_grow"]["total_subsidy"] < summ["A"]["total_subsidy"]

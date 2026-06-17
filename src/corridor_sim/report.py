@@ -310,8 +310,8 @@ def subsidy_yield_sensitivity(cfg: Config, corridor: str):
 
 
 def network_charts(cfg: Config):
-    """Act II — hub-and-spoke compounding: 3 charts (b64) + a summary table."""
-    from .network import NetworkConfig, hub_beta, network_sweep
+    """Act II — hub-and-spoke compounding: 4 charts (b64) + summary tables."""
+    from .network import NetworkConfig, hub_beta, network_subsidy, network_sweep
 
     nc = NetworkConfig()
     df = network_sweep(cfg, nc)
@@ -323,9 +323,9 @@ def network_charts(cfg: Config):
     # Panel 1 — hero: cross-border cost vs N
     f1, ax = plt.subplots(figsize=(8, 4.5))
     ax.plot(Ns, mx["C_xborder"], "-o", color=GREEN, lw=2, label="C — USTRY hub (unified reserve)")
-    ax.plot(Ns, mx["B_xborder_s3"], "-s", color=BLUE, lw=2, label="B — USDC hub, fragments 3 ways")
-    ax.plot(Ns, mx["B_xborder_s10"], "-^", color=NAVY, lw=2, label="B — USDC hub, fragments 10 ways")
-    ax.axhline(mx["A"].iloc[0], color=RED, ls="--", lw=1.4, label="A — incumbent")
+    ax.plot(Ns, mx["B_xborder_s10"], "-^", color=NAVY, lw=2, label="B — USDC hub, fixed 10 stablecoins")
+    ax.plot(Ns, mx["B_xborder_grow"], "-s", color=BLUE, lw=2, label="B — a stablecoin per market (grows with N)")
+    ax.plot(Ns, mx["A_xborder"], "--", color=RED, lw=1.4, label="A — incumbent (2 off-chain hops)")
     ax.axhline(25, color="grey", ls=":", lw=1, label="25 bps target")
     ax.set_xticks(Ns)
     ax.set_xlabel("Corridors on the network (N)")
@@ -366,16 +366,32 @@ def network_charts(cfg: Config):
     ax.grid(axis="y", alpha=0.25)
     img3 = _fig_to_b64(f3)
 
+    # Panel 4 — network subsidy over time (corridors launch staggered, ramp to maturity)
+    curve, launch, summ = network_subsidy(cfg, nc)
+    piv = curve.pivot_table(index="month", columns="model", values="cumulative_subsidy")
+    f4, ax = plt.subplots(figsize=(8, 4.5))
+    ax.plot(piv.index, piv["A"] / 1e6, "--", color=RED, lw=1.4, label="A — incumbent")
+    ax.plot(piv.index, piv["B_grow"] / 1e6, "-s", color=BLUE, lw=2, label="B — fragmenting stablecoins")
+    ax.plot(piv.index, piv["C"] / 1e6, "-o", color=GREEN, lw=2, label="C — unified USTRY hub")
+    ax.set_xlabel("Month (corridors launch staggered, ramp to maturity)")
+    ax.set_ylabel("Cumulative network subsidy (USD millions)")
+    ax.set_title("Network subsidy: C retires; fragmented stable-to-stable and incumbent do not")
+    ax.legend(fontsize=8)
+    ax.grid(alpha=0.25)
+    img4 = _fig_to_b64(f4)
+
     rows = []
     for n in (Ns[0], Ns[-1]):
         r = mx.loc[n]
         rows.append({
-            "n": int(n), "C": round(r["C_xborder"], 1), "B_s3": round(r["B_xborder_s3"], 1),
-            "B_s10": round(r["B_xborder_s10"], 1),
-            "gap_s3": round(r["B_xborder_s3"] - r["C_xborder"], 1),
-            "gap_s10": round(r["B_xborder_s10"] - r["C_xborder"], 1),
+            "n": int(n), "C": round(r["C_xborder"], 1), "B_s10": round(r["B_xborder_s10"], 1),
+            "B_grow": round(r["B_xborder_grow"], 1),
+            "gap_grow": round(r["B_xborder_grow"] - r["C_xborder"], 1),
         })
-    return {"hero": img1, "beta": img2, "dominance": img3}, rows, ref
+    sub_summary = {k: {"retires": v["retires"], "total_m": round(v["total_subsidy"] / 1e6, 1)}
+                   for k, v in summ.items()}
+    return ({"hero": img1, "beta": img2, "dominance": img3, "subsidy": img4},
+            rows, ref, sub_summary)
 
 
 # --------------------------------------------------------------------------- #
@@ -449,7 +465,7 @@ def build_report(run_dir: str | Path, out_path: str | Path | None = None) -> Pat
     sens_img, sens_rows, sens_target = subsidy_yield_sensitivity(cfg, primary)
     charts["subsidy_yield"] = sens_img
 
-    net_charts, net_rows, net_ref = network_charts(cfg)
+    net_charts, net_rows, net_ref, net_sub = network_charts(cfg)
     charts["network"] = net_charts
     # NaN month_to_retire (non-retiring models) -> None so the template shows "—"
     subsidy_records = [
@@ -483,6 +499,7 @@ def build_report(run_dir: str | Path, out_path: str | Path | None = None) -> Pat
         subsidy_yield_target=sens_target,
         network_rows=net_rows,
         network_ref=net_ref,
+        network_subsidy=net_sub,
         friction_pct=friction_pct,
         mature_T_label=f"{mature_T:g}",
         regimes=list(trials["regime"].unique()),
