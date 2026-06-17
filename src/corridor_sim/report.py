@@ -25,7 +25,7 @@ from .config import Config, load_config  # noqa: E402
 from .economics import spread_components, yield_subsidy_bps  # noqa: E402
 from .models import MODELS  # noqa: E402
 from .montecarlo import point_params  # noqa: E402
-from .subsidy import run_subsidy  # noqa: E402
+from .subsidy import DAYS_PER_MONTH, breakeven_bps, run_subsidy, turnover_curve  # noqa: E402
 
 # consistent colour per model across every chart (spec §8)
 MODEL_COLORS = {
@@ -250,6 +250,134 @@ def chart_tornado(cfg: Config, corridor: str, regime: str, T: float) -> str:
     return _fig_to_b64(fig)
 
 
+def _total_subsidy_at_yield(cfg: Config, corridor: str, y_blend: float, target: float) -> float:
+    """Total subsidy (USD) over the ramp for a reserved ramp whose blended yield is y_blend.
+
+    Uses the yield/yield model with both legs forced to y_blend, so y_blend = 0 reproduces
+    the stable/stable (no-yield) baseline exactly — the curve's intercept is Model B.
+    """
+
+    regime = cfg.subsidy.regime
+    Ts = turnover_curve(cfg)
+    K = cfg.params.K.point
+    spec = MODELS["C_xborder"]
+    cum = 0.0
+    for T in Ts:
+        p = point_params(cfg, corridor, regime, float(T))
+        p.y_local = y_blend
+        p.y_ustry = y_blend  # both legs = y_blend → blended_yield == y_blend
+        be = float(spread_components(spec, p)["c_total"])
+        gap = max(0.0, (be - target) / 1e4)
+        cum += gap * (T * K) * DAYS_PER_MONTH
+    return cum
+
+
+def subsidy_yield_sensitivity(cfg: Config, corridor: str):
+    """Total subsidy vs blended yield over the early-stage ramp (chart b64, table records)."""
+
+    regime = cfg.subsidy.regime
+    Ts = turnover_curve(cfg)
+    target = min(cfg.subsidy.target_bps, breakeven_bps(cfg, corridor, regime, float(Ts[-1]), "A"))
+
+    ys = np.linspace(0.0, 0.12, 25)
+    subs = np.array([_total_subsidy_at_yield(cfg, corridor, float(y), target) for y in ys])
+    baseline = subs[0]  # y = 0 → stable/stable (Model B)
+    default_y = float(spread_components(MODELS["C_xborder"], point_params(cfg, corridor, regime, float(Ts[-1])))["y_blend"])
+
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    ax.plot(ys * 100, subs / 1e6, "-", color=MODEL_COLORS["C_xborder"], lw=2, label="reserved ramp (C)")
+    ax.axhline(baseline / 1e6, color=MODEL_COLORS["B"], ls="--", lw=1.4, label="stable/stable (B), y=0")
+    ax.fill_between(ys * 100, subs / 1e6, baseline / 1e6, color="#2ecc71", alpha=0.18,
+                    label="subsidy bought back by yield")
+    ax.axvline(default_y * 100, color="#7f8c8d", ls=":", lw=1.2, label=f"default y_blend = {default_y*100:.1f}%")
+    ax.set_xlabel("Blended inventory yield (% APY)")
+    ax.set_ylabel(f"Total subsidy over {cfg.subsidy.horizon_months}mo (USD millions)")
+    ax.set_title(f"Subsidy vs yield — {corridor}, early-stage ramp ({regime})")
+    ax.legend(fontsize=8)
+    ax.grid(alpha=0.25)
+    img = _fig_to_b64(fig)
+
+    rows = []
+    for y in (0.0, 0.02, 0.045, 0.07, 0.095, 0.12):
+        s = _total_subsidy_at_yield(cfg, corridor, y, target)
+        rows.append({
+            "yield_pct": round(y * 100, 1),
+            "total_subsidy": round(s, 0),
+            "saved_vs_b": round(baseline - s, 0),
+            "saved_pct": round((baseline - s) / baseline * 100, 1) if baseline else 0.0,
+        })
+    return img, rows, round(target, 1)
+
+
+def network_charts(cfg: Config):
+    """Act II — hub-and-spoke compounding: 3 charts (b64) + a summary table."""
+    from .network import NetworkConfig, hub_beta, network_sweep
+
+    nc = NetworkConfig()
+    df = network_sweep(cfg, nc)
+    ref = "MX_MXN" if "MX_MXN" in nc.corridors else nc.corridors[0]
+    mx = df[df.corridor == ref].set_index("n").sort_index()
+    Ns = list(mx.index)
+    GREEN, BLUE, NAVY, RED = "#27ae60", "#2980b9", "#1f3a5f", "#c0392b"
+
+    # Panel 1 — hero: cross-border cost vs N
+    f1, ax = plt.subplots(figsize=(8, 4.5))
+    ax.plot(Ns, mx["C_xborder"], "-o", color=GREEN, lw=2, label="C — USTRY hub (unified reserve)")
+    ax.plot(Ns, mx["B_xborder_s3"], "-s", color=BLUE, lw=2, label="B — USDC hub, fragments 3 ways")
+    ax.plot(Ns, mx["B_xborder_s10"], "-^", color=NAVY, lw=2, label="B — USDC hub, fragments 10 ways")
+    ax.axhline(mx["A"].iloc[0], color=RED, ls="--", lw=1.4, label="A — incumbent")
+    ax.axhline(25, color="grey", ls=":", lw=1, label="25 bps target")
+    ax.set_xticks(Ns)
+    ax.set_xlabel("Corridors on the network (N)")
+    ax.set_ylabel(f"{ref} cross-border all-in cost (bps)")
+    ax.set_title("Cross-border compounding: unified treasury hub vs fragmenting stablecoins")
+    ax.legend(fontsize=8)
+    ax.grid(alpha=0.25)
+    img1 = _fig_to_b64(f1)
+
+    # Panel 2 — mechanism: effective hub imbalance β_hub vs N
+    f2, ax = plt.subplots(figsize=(8, 4.5))
+    for S, lab, col, mk in [(1, "C — USTRY (unified)", GREEN, "-o"), (3, "B — 3 stablecoins", BLUE, "-s"),
+                            (10, "B — 10 stablecoins", NAVY, "-^")]:
+        ax.plot(Ns, [hub_beta(n, nc, fragments=S) for n in Ns], mk, color=col, lw=2, label=lab)
+    ax.axhline(nc.beta_floor, color="grey", ls=":", lw=1, label=f"β floor {nc.beta_floor}")
+    ax.set_xticks(Ns)
+    ax.set_xlabel("Corridors on the network (N)")
+    ax.set_ylabel("Effective hub imbalance β_hub")
+    ax.set_title("Why: a unified reserve nets toward the floor; fragmented liquidity cannot")
+    ax.legend(fontsize=8)
+    ax.grid(alpha=0.25)
+    img2 = _fig_to_b64(f2)
+
+    # Panel 3 — Point 1: like-for-like dominance across corridors (deliver a dollar asset)
+    dom = df[df.n == len(nc.corridors)].set_index("corridor")
+    corrs = [c for c in nc.corridors if c in dom.index]
+    x = np.arange(len(corrs))
+    f3, ax = plt.subplots(figsize=(8, 4.5))
+    ax.bar(x - 0.25, [dom.loc[c, "A"] for c in corrs], 0.25, color=RED, label="A — incumbent")
+    ax.bar(x, [dom.loc[c, "B_local"] for c in corrs], 0.25, color=BLUE, label="B — stable→USDC")
+    ax.bar(x + 0.25, [dom.loc[c, "C_local_ustry"] for c in corrs], 0.25, color=GREEN, label="C — local→USTRY")
+    ax.axhline(25, color="grey", ls=":", lw=1, label="25 bps target")
+    ax.set_xticks(x)
+    ax.set_xticklabels([c.split("_")[-1] for c in corrs])
+    ax.set_ylabel("All-in cost (bps)")
+    ax.set_title("Point 1 — yield is ≤ B and ≪ A in every corridor (deliver a dollar asset)")
+    ax.legend(fontsize=8)
+    ax.grid(axis="y", alpha=0.25)
+    img3 = _fig_to_b64(f3)
+
+    rows = []
+    for n in (Ns[0], Ns[-1]):
+        r = mx.loc[n]
+        rows.append({
+            "n": int(n), "C": round(r["C_xborder"], 1), "B_s3": round(r["B_xborder_s3"], 1),
+            "B_s10": round(r["B_xborder_s10"], 1),
+            "gap_s3": round(r["B_xborder_s3"] - r["C_xborder"], 1),
+            "gap_s10": round(r["B_xborder_s10"] - r["C_xborder"], 1),
+        })
+    return {"hero": img1, "beta": img2, "dominance": img3}, rows, ref
+
+
 # --------------------------------------------------------------------------- #
 # Assembly
 # --------------------------------------------------------------------------- #
@@ -308,6 +436,21 @@ def build_report(run_dir: str | Path, out_path: str | Path | None = None) -> Pat
 
     subsidy_img, subsidy_summary = chart_subsidy(cfg, primary)
     charts["subsidy"] = subsidy_img
+
+    # Turnover S-curve assumed by the burn-down (volume V = T·K), shown as a table so the
+    # ramp assumption is explicit rather than buried in the chart.
+    Ts = turnover_curve(cfg)
+    K = cfg.params.K.point
+    turnover_ramp = [
+        {"month": int(m), "T": round(float(T), 3), "volume_m": round(float(T) * K / 1e6, 2)}
+        for m, T in enumerate(Ts)
+    ]
+
+    sens_img, sens_rows, sens_target = subsidy_yield_sensitivity(cfg, primary)
+    charts["subsidy_yield"] = sens_img
+
+    net_charts, net_rows, net_ref = network_charts(cfg)
+    charts["network"] = net_charts
     # NaN month_to_retire (non-retiring models) -> None so the template shows "—"
     subsidy_records = [
         {k: (None if isinstance(v, float) and np.isnan(v) else v) for k, v in rec.items()}
@@ -331,6 +474,15 @@ def build_report(run_dir: str | Path, out_path: str | Path | None = None) -> Pat
         charts=charts,
         calib=calib,
         subsidy_summary=subsidy_records,
+        turnover_ramp=turnover_ramp,
+        horizon_months=cfg.subsidy.horizon_months,
+        ramp_t_start=cfg.subsidy.t_start,
+        ramp_t_mature=cfg.subsidy.t_mature,
+        working_capital_m=round(cfg.params.K.point / 1e6, 2),
+        subsidy_yield_rows=sens_rows,
+        subsidy_yield_target=sens_target,
+        network_rows=net_rows,
+        network_ref=net_ref,
         friction_pct=friction_pct,
         mature_T_label=f"{mature_T:g}",
         regimes=list(trials["regime"].unique()),

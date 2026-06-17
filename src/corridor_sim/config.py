@@ -239,6 +239,14 @@ def build_default_config() -> Config:
             representative_turnover=10.0,
             provisional=True,
         ),
+        "KR_KRW": CorridorSpec(
+            name="KR_KRW",
+            label="Korea (KRW) — KTB, low yield / low vol",
+            sigma=DistSpec(family="triangular", args={"lo": 0.05, "mode": 0.09, "hi": 0.20}),
+            y_local=DistSpec(family="triangular", args={"lo": 0.028, "mode": 0.032, "hi": 0.040}),  # KTB ~3%
+            representative_turnover=10.0,
+            provisional=False,
+        ),
         "AR_ARS": CorridorSpec(
             name="AR_ARS",
             label="Argentina (ARS) — very high vol (provisional)",

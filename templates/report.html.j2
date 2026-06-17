@@ -99,8 +99,24 @@
   <img src="data:image/png;base64,{{ charts.paired }}" alt="paired advantage">
 
   <h2>7 · Subsidy burn-down</h2>
-  <p class="sub">Cumulative SDF subsidy over the 24-month turnover S-curve (persistent imbalance). Model C's
-  subsidy retires to zero; Model A's does not.</p>
+  <p class="sub">Cumulative SDF subsidy over the {{ horizon_months }}-month turnover S-curve (persistent imbalance). The
+  subsidy funds the gap to the wholesale target while turnover is too thin to break even; the yield edge (ΔS)
+  shrinks that gap, so the reserved ramp (C) is subsidised less than stable/stable (B), which is subsidised far
+  less than the incumbent (A).</p>
+
+  <h3 style="margin-bottom:4px">Assumed turnover ramp</h3>
+  <p class="sub">Turnover climbs a logistic S-curve from {{ "%.2f"|format(ramp_t_start) }}× to
+  {{ "%.2f"|format(ramp_t_mature) }}×/day over {{ horizon_months }} months (standing up a brand-new market).
+  Daily volume V = T · working capital (${{ "%.0f"|format(working_capital_m) }}M).</p>
+  <table>
+    <thead><tr><th>Month</th><th>Turnover T (×/day)</th><th>Daily volume V (USD M)</th></tr></thead>
+    <tbody>
+    {% for r in turnover_ramp %}
+      <tr><td>{{ r.month }}</td><td>{{ "%.3f"|format(r.T) }}</td><td>{{ "{:,.2f}".format(r.volume_m) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
   <img src="data:image/png;base64,{{ charts.subsidy }}" alt="subsidy burn-down">
   <table>
     <thead><tr><th>Model</th><th>Retires?</th><th>Month to retire</th><th>Total subsidy (USD)</th><th>Final break-even (bps)</th></tr></thead>
@@ -115,13 +131,60 @@
     </tbody>
   </table>
 
-  <h2>8 · Sensitivity (tornado)</h2>
+  <h2>8 · Subsidy sensitivity to yield</h2>
+  <p class="sub">Total subsidy over the early-stage ramp as a function of the reserved ramp's blended inventory
+  yield. The intercept (yield = 0) is the stable/stable case (Model B); the shaded gap below it is the subsidy
+  <em>bought back by yield</em>. Target {{ "%.1f"|format(subsidy_yield_target) }} bps.</p>
+  <img src="data:image/png;base64,{{ charts.subsidy_yield }}" alt="subsidy vs yield">
+  <table>
+    <thead><tr><th>Blended yield (% APY)</th><th>Total subsidy (USD)</th><th>Saved vs y=0 (USD)</th><th>Saved (%)</th></tr></thead>
+    <tbody>
+    {% for r in subsidy_yield_rows %}
+      <tr><td>{{ "%.1f"|format(r.yield_pct) }}</td>
+        <td>{{ "{:,.0f}".format(r.total_subsidy) }}</td>
+        <td>{{ "{:,.0f}".format(r.saved_vs_b) }}</td>
+        <td>{{ "%.1f"|format(r.saved_pct) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>9 · Network: hub-and-spoke compounding</h2>
+  <p class="sub">Corridors funnel local value through tokenized US Treasuries (USTRY) as a shared reserve;
+  USDC is just the dollar-exit spoke. Two claims, across {{ network_ref }} and corridors added in order
+  (MXN→BRL→KRW→TRY).</p>
+
+  <p class="sub"><strong>Point 1 — yield is universally cheaper.</strong> Delivering a dollar asset, C (local→USTRY)
+  is ≤ B (local→USDC) by the yield subsidy and ≪ A in every corridor.</p>
+  <img src="data:image/png;base64,{{ charts.network.dominance }}" alt="cross-corridor dominance">
+
+  <p class="sub"><strong>Point 2 — it compounds, fragmented stable-to-stable does not.</strong> Cross-border cost
+  falls toward a floor as corridors aggregate at the unified USTRY hub. A steelman stable-to-stable competitor
+  routes through a USDC hub; with a single unified stablecoin it nearly keeps up (losing only by yield), but as
+  stablecoins diversify its liquidity fragments across shallow pools (3 and 10 shown) that cannot aggregate — so
+  it stays a large multiple above C (≈2.5× at 10 stablecoins) and never reaches the floor.</p>
+  <img src="data:image/png;base64,{{ charts.network.hero }}" alt="cross-border compounding">
+  <table>
+    <thead><tr><th>N corridors</th><th>C — USTRY (bps)</th><th>B — 3 stablecoins</th><th>B — 10 stablecoins</th><th>gap vs C (3)</th><th>gap vs C (10)</th></tr></thead>
+    <tbody>
+    {% for r in network_rows %}
+      <tr><td>{{ r.n }}</td><td>{{ "%.1f"|format(r.C) }}</td><td>{{ "%.1f"|format(r.B_s3) }}</td>
+        <td>{{ "%.1f"|format(r.B_s10) }}</td><td>{{ "%.1f"|format(r.gap_s3) }}</td>
+        <td>{{ "%.1f"|format(r.gap_s10) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <img src="data:image/png;base64,{{ charts.network.beta }}" alt="hub imbalance netting">
+  <div class="note">Assumptions (adjustable): one shared hub book (T_hub aggregates ΣV); β_hub nets as
+  β_floor + (β₀−β_floor)/√N_eff with β_floor = 0.2; stablecoin fragmentation splits B's hub flow and netting.
+  Deferred (docs/TODO.md): explicit spoke price-impact; calibrating the fragmentation count.</div>
+
+  <h2>10 · Sensitivity (tornado)</h2>
   <p class="sub">One-at-a-time effect of each parameter on median <code>C_total</code> for the reserved ramp
   (C-xborder), ranked by swing. Orange bars are the dominant drivers (<code>σ</code>, <code>β</code>,
   yields, <code>T</code>).</p>
   <img src="data:image/png;base64,{{ charts.tornado }}" alt="tornado">
 
-  <h2>9 · Assumptions &amp; caveats</h2>
+  <h2>11 · Assumptions &amp; caveats</h2>
   <div class="note">
   The yield edge is <strong>an edge over a risk, not a riskless gift</strong> (V6 §7.6). The model surfaces,
   rather than hides, the open questions:
