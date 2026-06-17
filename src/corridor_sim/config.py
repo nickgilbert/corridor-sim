@@ -81,9 +81,9 @@ class SubsidyConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    t_start: float = 0.5
-    t_mature: float = 20.0
-    horizon_months: int = 24
+    t_start: float = 0.01  # near-zero turnover at launch (standing up a brand-new market)
+    t_mature: float = 1.0  # early-stage maturity within the modelled horizon
+    horizon_months: int = 12
     steepness: float = 6.0  # logistic steepness of the S-curve
     target_bps: float = 25.0  # wholesale floor; effective target = min(this, incumbent)
     regime: str = "persistent"  # corridors SDF subsidises are persistent-imbalance

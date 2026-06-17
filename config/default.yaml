@@ -308,9 +308,11 @@ grid:
   - C_xborder
   - C_same_denom
 subsidy:
-  t_start: 0.5
-  t_mature: 20.0
-  horizon_months: 24
+  # Early-stage ramp for standing up a brand-new market: turnover climbs an S-curve
+  # from near-zero (0.01x/day) to 1x/day over the first 12 months.
+  t_start: 0.01
+  t_mature: 1.0
+  horizon_months: 12
   steepness: 6.0
   target_bps: 25.0
   regime: persistent
