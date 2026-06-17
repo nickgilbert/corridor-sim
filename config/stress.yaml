@@ -1,0 +1,20 @@
+# Crisis stress preset (Appendix B.3): bond-market liquidity can seize in a crisis.
+# Reflected via a higher on-chain redeem fee and a much longer on-chain settlement time,
+# which together push the friction differential (f_redeem·β vs ΔS) toward breach.
+# Usage: corridor-sim all --config config/stress.yaml --out runs/stress
+params:
+  f_redeem:
+    point: 0.0015            # 15 bps redeem fee (vs 3 bps base)
+    dist:
+      family: triangular
+      args: { lo: 0.0008, mode: 0.0015, hi: 0.0030 }
+  t_settle_onchain:
+    point: 0.01              # ~15 minutes (vs ~1 second base)
+    dist:
+      family: fixed
+      args: { value: 0.01 }
+  var_charge:
+    point: 0.01             # 1% annual VaR charge against the yield edge (Appendix B.1)
+    dist:
+      family: fixed
+      args: { value: 0.01 }

@@ -1,0 +1,9 @@
+# Focus run: Mexico (MXN) corridor only — lead market, full data (spec §4 presets).
+# The corridor's σ / yield priors are defined in config/default.yaml under
+# corridors.MX_MXN; this file just restricts the sweep grid to that corridor.
+grid:
+  corridors: ["MX_MXN"]
+calibration:
+  corridor: "MX_MXN"
+subsidy:
+  regime: "persistent"

@@ -1,0 +1,316 @@
+# Corridor Economics Simulation Engine — default configuration (spec §4, §5, §6).
+# Full resolved default set, emitted from corridor_sim.config.build_default_config().
+# Pass --config config/default.yaml to override; omitted fields deep-merge onto built-in defaults.
+
+seed: 42
+trials: 10000
+params:
+  sigma:
+    point: 0.12
+    dist:
+      family: triangular
+      args:
+        lo: 0.05
+        mode: 0.12
+        hi: 0.35
+  rho:
+    point: 0.15
+    dist:
+      family: triangular
+      args:
+        lo: 0.08
+        mode: 0.15
+        hi: 0.25
+  y_local:
+    point: 0.095
+    dist:
+      family: triangular
+      args:
+        lo: 0.06
+        mode: 0.095
+        hi: 0.115
+  y_ustry:
+    point: 0.045
+    dist:
+      family: triangular
+      args:
+        lo: 0.035
+        mode: 0.045
+        hi: 0.055
+  w:
+    point: 0.5
+    dist:
+      family: triangular
+      args:
+        lo: 0.3
+        mode: 0.5
+        hi: 0.7
+  f_venue:
+    point: 0.0025
+    dist:
+      family: triangular
+      args:
+        lo: 0.0015
+        mode: 0.0025
+        hi: 0.004
+  f_redeem:
+    point: 0.0003
+    dist:
+      family: triangular
+      args:
+        lo: 0.0001
+        mode: 0.0003
+        hi: 0.0008
+  t_settle_offchain:
+    point: 1.5
+    dist:
+      family: triangular
+      args:
+        lo: 0.5
+        mode: 1.5
+        hi: 3.0
+  t_settle_offchain_hold:
+    point: 1.5
+    dist:
+      family: triangular
+      args:
+        lo: 0.5
+        mode: 1.5
+        hi: 3.0
+  t_settle_onchain:
+    point: 1.16e-05
+    dist:
+      family: fixed
+      args:
+        value: 1.16e-05
+  s_op:
+    point: 0.0005
+    dist:
+      family: triangular
+      args:
+        lo: 0.0002
+        mode: 0.0005
+        hi: 0.001
+  m_offchain:
+    point: 0.001
+    dist:
+      family: triangular
+      args:
+        lo: 0.0
+        mode: 0.001
+        hi: 0.003
+  m_onchain:
+    point: 0.0
+    dist:
+      family: triangular
+      args:
+        lo: 0.0
+        mode: 0.0
+        hi: 0.0002
+  k_risk:
+    point: 0.35
+    dist:
+      family: fixed
+      args:
+        value: 0.35
+  K:
+    point: 10000000.0
+    dist:
+      family: fixed
+      args:
+        value: 10000000.0
+  var_charge:
+    point: 0.0
+    dist:
+      family: fixed
+      args:
+        value: 0.0
+regimes:
+  balanced:
+    name: balanced
+    beta:
+      family: triangular
+      args:
+        lo: 0.0
+        mode: 0.05
+        hi: 0.15
+    calibration_turnover: 20.0
+    band_bps:
+    - 1.0
+    - 3.0
+  intermittent:
+    name: intermittent
+    beta:
+      family: triangular
+      args:
+        lo: 0.15
+        mode: 0.35
+        hi: 0.55
+    calibration_turnover: 5.0
+    band_bps:
+    - 10.0
+    - 25.0
+  persistent:
+    name: persistent
+    beta:
+      family: triangular
+      args:
+        lo: 0.6
+        mode: 0.8
+        hi: 1.0
+    calibration_turnover: 1.0
+    band_bps:
+    - 30.0
+    - 60.0
+corridors:
+  MX_MXN:
+    name: MX_MXN
+    label: "Mexico (MXN) \u2014 CETES, low FX vol"
+    sigma:
+      family: triangular
+      args:
+        lo: 0.05
+        mode: 0.12
+        hi: 0.35
+    y_local:
+      family: triangular
+      args:
+        lo: 0.06
+        mode: 0.095
+        hi: 0.115
+    representative_turnover: 10.0
+    provisional: false
+  TR_TRY:
+    name: TR_TRY
+    label: "Turkey (TRY) \u2014 high FX vol stress"
+    sigma:
+      family: triangular
+      args:
+        lo: 0.15
+        mode: 0.35
+        hi: 0.6
+    y_local:
+      family: triangular
+      args:
+        lo: 0.3
+        mode: 0.42
+        hi: 0.5
+    representative_turnover: 10.0
+    provisional: false
+  BR_BRL:
+    name: BR_BRL
+    label: "Brazil (BRL) \u2014 TESOURO, mid vol (provisional)"
+    sigma:
+      family: triangular
+      args:
+        lo: 0.08
+        mode: 0.16
+        hi: 0.4
+    y_local:
+      family: triangular
+      args:
+        lo: 0.09
+        mode: 0.105
+        hi: 0.135
+    representative_turnover: 10.0
+    provisional: true
+  AR_ARS:
+    name: AR_ARS
+    label: "Argentina (ARS) \u2014 very high vol (provisional)"
+    sigma:
+      family: triangular
+      args:
+        lo: 0.25
+        mode: 0.55
+        hi: 0.9
+    y_local:
+      family: triangular
+      args:
+        lo: 0.3
+        mode: 0.6
+        hi: 0.9
+    representative_turnover: 10.0
+    provisional: true
+  IN_INR:
+    name: IN_INR
+    label: "India (INR) \u2014 mid vol (provisional)"
+    sigma:
+      family: triangular
+      args:
+        lo: 0.04
+        mode: 0.08
+        hi: 0.2
+    y_local:
+      family: triangular
+      args:
+        lo: 0.06
+        mode: 0.07
+        hi: 0.085
+    representative_turnover: 10.0
+    provisional: true
+  VN_VND:
+    name: VN_VND
+    label: "Vietnam (VND) \u2014 low/mid vol (provisional)"
+    sigma:
+      family: triangular
+      args:
+        lo: 0.03
+        mode: 0.07
+        hi: 0.18
+    y_local:
+      family: triangular
+      args:
+        lo: 0.03
+        mode: 0.045
+        hi: 0.06
+    representative_turnover: 10.0
+    provisional: true
+  ID_IDR:
+    name: ID_IDR
+    label: "Indonesia (IDR) \u2014 mid vol (provisional)"
+    sigma:
+      family: triangular
+      args:
+        lo: 0.05
+        mode: 0.1
+        hi: 0.25
+    y_local:
+      family: triangular
+      args:
+        lo: 0.055
+        mode: 0.065
+        hi: 0.08
+    representative_turnover: 10.0
+    provisional: true
+grid:
+  corridors:
+  - MX_MXN
+  - TR_TRY
+  turnovers:
+  - 0.5
+  - 1.0
+  - 5.0
+  - 10.0
+  - 20.0
+  regimes:
+  - balanced
+  - intermittent
+  - persistent
+  models:
+  - A
+  - B
+  - C_xborder
+  - C_same_denom
+subsidy:
+  t_start: 0.5
+  t_mature: 20.0
+  horizon_months: 24
+  steepness: 6.0
+  target_bps: 25.0
+  regime: persistent
+calibration:
+  corridor: MX_MXN
+  trials: 20000
+  k_bounds:
+  - 0.01
+  - 3.0

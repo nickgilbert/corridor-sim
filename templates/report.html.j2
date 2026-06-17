@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Corridor Economics Simulation — Report</title>
+<style>
+  :root { --fg:#1a1a1a; --muted:#666; --line:#e2e2e2; --bg:#fff; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         color: var(--fg); background: var(--bg); margin: 0; line-height: 1.5; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { font-size: 26px; margin-bottom: 4px; }
+  h2 { font-size: 19px; margin-top: 40px; border-bottom: 2px solid var(--line); padding-bottom: 6px; }
+  h3 { font-size: 15px; color: var(--muted); margin-bottom: 6px; }
+  .sub { color: var(--muted); font-size: 14px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { background: #f6f6f6; }
+  img { max-width: 100%; height: auto; display: block; margin: 10px 0 4px; }
+  .legend span { display:inline-block; margin-right:14px; font-size:13px; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:2px; margin-right:5px; vertical-align:middle; }
+  .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .note { background:#fdfaf0; border-left:4px solid #e0b84c; padding:10px 14px; font-size:13.5px; margin:10px 0; }
+  .ok { color:#1e8b4d; font-weight:600; } .bad { color:#c0392b; font-weight:600; }
+  code { background:#f2f2f2; padding:1px 5px; border-radius:3px; font-size:13px; }
+  ul { font-size: 14px; }
+  @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Corridor Economics Simulation Engine</h1>
+  <p class="sub">Denomination-matched reserved-ramp value chain (Model C) vs incumbent off-chain FX (A)
+  and stable-vs-stable on-chain FX (B). Headline corridor: <strong>{{ primary }}</strong> — {{ corridor_label }},
+  mature turnover T = {{ "%g"|format(mature_T) }}×.</p>
+
+  <div class="legend">
+    {% for k in model_order %}
+      <span><span class="swatch" style="background: {{ model_colors[k] }}"></span>{{ model_labels[k] }}</span>
+    {% endfor %}
+  </div>
+
+  <h2>1 · Executive summary</h2>
+  <p class="sub">Median all-in cost <code>C_total</code> (bps) by model at mature turnover, per flow regime,
+  for {{ primary }}. The reserved ramp (C) settles below stable/stable (B) by the yield subsidy, and both
+  beat the incumbent (A). In the persistent-imbalance regime that dominates remittance/savings corridors,
+  the gap is widest and C clears the ≤25 bps wholesale target with majority probability.</p>
+  <table>
+    <thead><tr><th>Regime</th>
+      {% for k in model_order %}<th>{{ k }}</th>{% endfor %}
+      <th>P(C ≤ 25 bps)</th></tr></thead>
+    <tbody>
+    {% for r in exec_rows %}
+      <tr><td>{{ r.regime }}</td>
+        {% for k in model_order %}<td>{{ r[k ~ "_median"] }}</td>{% endfor %}
+        <td>{{ r.C_p_le_25 }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if calib %}
+  <p class="sub">Calibrated risk coefficient <code>k_risk = {{ "%.4f"|format(calib.k_risk) }}</code>
+  (fit to the §7.2 regime bands on {{ calib.corridor }}). Regime medians (bps):
+  {% for reg, med in calib.regime_medians_bps.items() %}{{ reg }}={{ med }}{% if not loop.last %}, {% endif %}{% endfor %}.</p>
+  {% endif %}
+
+  <h2>2 · Distribution of all-in cost</h2>
+  <p class="sub">Overlaid violins of <code>C_total</code> for A / B / C-xborder / C-same-denom at mature T,
+  with p5–p95 whiskers. The dashed line is the ≤25 bps target.</p>
+  {% for reg in regimes %}
+    <h3>{{ reg }}</h3>
+    <img src="data:image/png;base64,{{ charts.distributions[reg] }}" alt="distribution {{ reg }}">
+  {% endfor %}
+
+  <h2>3 · Returns to scale (the money chart)</h2>
+  <p class="sub">Competitive FX spread <code>S_fx</code> (median, p25–p75 fan) vs turnover. A stays flat/high
+  — its venue fee never retires (no returns to scale). B declines to the cash-FX-parity floor. C declines
+  <em>below</em> it, funded by yield.</p>
+  {% for reg in regimes %}
+    <h3>{{ reg }}</h3>
+    <img src="data:image/png;base64,{{ charts.turnover[reg] }}" alt="turnover {{ reg }}">
+  {% endfor %}
+
+  <h2>4 · Yield-subsidy panel</h2>
+  <p class="sub">Structural spread discount <code>ΔS = 2·y_daily/T</code>. The shaded band is the
+  0.20–0.50 bps structural-edge zone; the subsidy is largest exactly in thin, early-corridor (low-T)
+  conditions and shrinks as 1/T.</p>
+  <img src="data:image/png;base64,{{ charts.yield_subsidy }}" alt="yield subsidy">
+
+  <h2>5 · Cost-stack waterfall</h2>
+  <p class="sub">Mean decomposition of <code>C_total</code> into its additive terms for a representative
+  persistent-imbalance cell. Model C's yield credit appears as an income (downward) term.</p>
+  <img src="data:image/png;base64,{{ charts.waterfall }}" alt="waterfall">
+
+  <h2>6 · Paired advantage</h2>
+  <p class="sub">Per-trial bps saved by C vs A and C vs B, using common random numbers so the difference
+  distribution is meaningful.</p>
+  <img src="data:image/png;base64,{{ charts.paired }}" alt="paired advantage">
+
+  <h2>7 · Subsidy burn-down</h2>
+  <p class="sub">Cumulative SDF subsidy over the 24-month turnover S-curve (persistent imbalance). Model C's
+  subsidy retires to zero; Model A's does not.</p>
+  <img src="data:image/png;base64,{{ charts.subsidy }}" alt="subsidy burn-down">
+  <table>
+    <thead><tr><th>Model</th><th>Retires?</th><th>Month to retire</th><th>Total subsidy (USD)</th><th>Final break-even (bps)</th></tr></thead>
+    <tbody>
+    {% for s in subsidy_summary %}
+      <tr><td>{{ s.model }}</td>
+        <td>{% if s.retires %}<span class="ok">yes</span>{% else %}<span class="bad">no</span>{% endif %}</td>
+        <td>{{ s.month_to_retire if s.month_to_retire is not none else "—" }}</td>
+        <td>{{ "{:,.0f}".format(s.total_subsidy) }}</td>
+        <td>{{ "%.1f"|format(s.final_breakeven_bps) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>8 · Sensitivity (tornado)</h2>
+  <p class="sub">One-at-a-time effect of each parameter on median <code>C_total</code> for the reserved ramp
+  (C-xborder), ranked by swing. Orange bars are the dominant drivers (<code>σ</code>, <code>β</code>,
+  yields, <code>T</code>).</p>
+  <img src="data:image/png;base64,{{ charts.tornado }}" alt="tornado">
+
+  <h2>9 · Assumptions &amp; caveats</h2>
+  <div class="note">
+  The yield edge is <strong>an edge over a risk, not a riskless gift</strong> (V6 §7.6). The model surfaces,
+  rather than hides, the open questions:
+  </div>
+  <ul>
+    <li><strong>VaR vs the yield edge.</strong> The sub-bps advantage must cover the value-at-risk of holding
+      securities rather than cash. An optional <code>var_charge</code> term (default 0) subtracts directly from
+      the yield credit — the key honest unknown.</li>
+    <li><strong>Interest-rate risk</strong> on short-duration treasuries (low, not zero): sensitivity to a
+      sharp yield drop is included in the tornado via the <code>y_local</code>/<code>y_ustry</code> ranges.</li>
+    <li><strong>Bond-market liquidity / hours.</strong> Can seize in a crisis; stress via a higher
+      <code>f_redeem</code> and longer on-chain settlement preset.</li>
+    <li><strong>Friction differential.</strong> <code>f_redeem·β</code> must remain below the yield edge
+      <code>ΔS</code> for the model to hold; trials breaching this are economically the failure mode.
+      {% if friction_pct is not none %}In the persistent-imbalance {{ primary }} cell at T={{ mature_T_label }}×,
+      <strong>{{ friction_pct }}%</strong> of reserved-ramp trials breach it (<code>p_friction_breach</code>
+      is recorded per cell in <code>results_summary.csv</code>).{% endif %}</li>
+    <li><strong>Imbalance is the adversary, not turnover alone.</strong> ΔS shrinks as 1/T, so C's win is
+      largest exactly in the thin, imbalanced, early-corridor conditions SDF subsidises.</li>
+  </ul>
+
+  {% for k in model_order %}
+  <p class="sub"><strong>{{ k }}</strong> — {{ model_descriptions[k] }}</p>
+  {% endfor %}
+
+</div>
+</body>
+</html>

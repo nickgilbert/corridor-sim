@@ -1,0 +1,10 @@
+# Focus run: Turkey (TRY) corridor only — high-FX-vol stress case (spec §4 presets).
+# The corridor's σ / yield priors are defined in config/default.yaml under
+# corridors.TR_TRY; this file just restricts the sweep grid to that corridor.
+# k_risk is still calibrated on MX_MXN (the reference market) so spreads stay comparable.
+grid:
+  corridors: ["TR_TRY"]
+calibration:
+  corridor: "MX_MXN"
+subsidy:
+  regime: "persistent"
