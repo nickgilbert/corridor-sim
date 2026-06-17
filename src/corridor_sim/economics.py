@@ -50,6 +50,7 @@ class EconParams:
     k_risk: Any  # risk-premium calibration coefficient
     K: Any  # working capital (USD)
     var_charge: Any = 0.0  # optional VaR charge against the yield edge (Appendix B.1)
+    f_mint: Any = 0.0  # on-chain mint (cash->asset) fee; 0 by default (issuers monetise float)
 
 
 # --------------------------------------------------------------------------- #
@@ -97,7 +98,16 @@ def _components_decimal(
 
     carry = 2.0 * (rho_d - y_d) / p.T          # net cost-of-capital carry
     risk = p.k_risk * sig_d * np.sqrt(t_hold)  # price risk over the holding window
-    rebal = f_reb * p.beta + p.k_risk * sig_d * np.sqrt(t_set)  # rebalance cost on imbalanced flow
+
+    # Rebalancing imbalanced inventory unwinds the surplus leg (asset -> cash: a *redeem*,
+    # fee-bearing) and restocks the deficit leg (cash -> asset: a *mint*). On-chain, minting
+    # is free at face value — the issuer monetises the float on minted assets and charges
+    # only on redemption (V6 §4.3) — so f_mint defaults to 0. Off-chain the venue charges its
+    # fee on the trade regardless of direction, so there is no mint exemption (f_mint not used).
+    f_mint = p.f_mint if onchain else 0.0
+    redeem_cost = f_reb * p.beta               # redeem/venue fee on the imbalanced fraction
+    mint_cost = f_mint * p.beta                # mint fee (0 by default: face-value mint)
+    rebal = redeem_cost + mint_cost + p.k_risk * sig_d * np.sqrt(t_set)  # rebalance on imbalanced flow
 
     # The ramp's own yield credit: idle-treasury drag inverts into income (V6 §4.3).
     yield_credit = (2.0 * y_d / p.T) if model.ramp_yield else 0.0
@@ -113,10 +123,11 @@ def _components_decimal(
 
     c_total = s_ramp + s_fx
 
-    # Friction differential (Appendix B.4): the redeem/venue fee paid on imbalanced flow
-    # must stay below the yield edge ΔS, or the structural advantage is eaten by friction.
+    # Friction differential (Appendix B.4): the *redeem* fee paid on imbalanced flow must
+    # stay below the yield edge ΔS, or the structural advantage is eaten by friction. Minting
+    # is free (face value), so only the redeem leg is compared against ΔS.
     delta_s = 2.0 * y_d / p.T  # yield subsidy (decimal); 0 when y_d == 0
-    friction_cost = f_reb * p.beta
+    friction_cost = redeem_cost
     # Only meaningful where there is a yield edge to erode (the C models).
     friction_breach = (
         (np.asarray(friction_cost, dtype=float) > np.asarray(delta_s, dtype=float)).astype(float)
@@ -133,6 +144,7 @@ def _components_decimal(
         "ramp_yield_credit": yield_credit,
         "y_blend": y_ann,
         "delta_s": delta_s,
+        "mint_cost": mint_cost,
         "friction_cost": friction_cost,
         "friction_breach": friction_breach,
         "s_fx": s_fx,
@@ -147,8 +159,8 @@ def spread_components(
     """Return every additive spread term plus totals, in **basis points** (spec §3.3).
 
     Keys: ``operating, margin, carry, risk, rebalance, ramp_yield_credit, delta_s,
-    friction_cost, s_fx, s_ramp, c_total`` (all bps); ``y_blend`` (annual fraction);
-    ``friction_breach`` (0/1 indicator, Appendix B.4).
+    mint_cost, friction_cost, s_fx, s_ramp, c_total`` (all bps); ``y_blend`` (annual
+    fraction); ``friction_breach`` (0/1 indicator, Appendix B.4).
     """
 
     d = _components_decimal(model, p, book_venue_in_ramp=book_venue_in_ramp)

@@ -25,6 +25,32 @@ def _pivot(cfg, corridor, regime, T, n=4000):
     return res.trials.pivot_table(index="trial", columns="model", values="c_total"), res
 
 
+def test_minting_is_free_redeem_only(cfg):
+    """On-chain rebalancing charges the redeem leg only; minting is free at face value.
+
+    Issuers monetise the float on minted assets and charge only on redemption (V6 §4.3),
+    so f_mint is 0 by default and the friction differential compares the redeem leg to ΔS.
+    """
+    p = point_params(cfg, "MX_MXN", "persistent", 5.0)
+    assert float(p.f_mint) == 0.0  # default: face-value mint, no fee
+
+    # With f_mint = 0 the rebalance term equals the redeem leg + the (negligible) duration
+    # term, and the exposed mint_cost is exactly zero, for both on-chain yield models.
+    for key in ("B", "C_xborder", "C_same_denom"):
+        comp = spread_components(MODELS[key], p)
+        assert comp["mint_cost"] == 0.0
+        assert comp["friction_cost"] == pytest.approx(p.f_redeem * p.beta * 1e4, rel=1e-9)
+
+    # A non-zero mint fee must raise the on-chain rebalance term by exactly f_mint·β,
+    # leaving the redeem-only friction differential unchanged.
+    base = spread_components(MODELS["C_xborder"], p)
+    p_mint = point_params(cfg, "MX_MXN", "persistent", 5.0)
+    p_mint.f_mint = 0.0005
+    bumped = spread_components(MODELS["C_xborder"], p_mint)
+    assert bumped["rebalance"] - base["rebalance"] == pytest.approx(0.0005 * p.beta * 1e4, rel=1e-9)
+    assert bumped["friction_cost"] == pytest.approx(base["friction_cost"], rel=1e-9)
+
+
 def test_ordering_A_ge_B_ge_C(cfg):
     piv, _ = _pivot(cfg, "MX_MXN", "persistent", 5.0)
     assert (piv["A"] >= piv["B"] - EPS).all()

@@ -121,7 +121,8 @@ class Params(BaseModel):
     y_ustry: ParamSpec  # USD tokenized treasury yield
     w: ParamSpec  # inventory leg weight
     f_venue: ParamSpec
-    f_redeem: ParamSpec
+    f_redeem: ParamSpec  # on-chain redeem (asset->cash) fee, Models B/C
+    f_mint: ParamSpec  # on-chain mint (cash->asset) fee; 0 by default — issuers monetise float
     t_settle_offchain: ParamSpec
     t_settle_offchain_hold: ParamSpec
     t_settle_onchain: ParamSpec
@@ -180,6 +181,7 @@ def build_default_config() -> Config:
         w=_p(0.5, "triangular", lo=0.3, mode=0.5, hi=0.7),
         f_venue=_p(0.0025, "triangular", lo=0.0015, mode=0.0025, hi=0.0040),
         f_redeem=_p(0.0003, "triangular", lo=0.0001, mode=0.0003, hi=0.0008),
+        f_mint=_p(0.0),  # mint at face value is free (V6 §4.3); issuer earns the float
         t_settle_offchain=_p(1.5, "triangular", lo=0.5, mode=1.5, hi=3.0),
         t_settle_offchain_hold=_p(1.5, "triangular", lo=0.5, mode=1.5, hi=3.0),
         t_settle_onchain=_p(1.16e-5),  # ~1 second, fixed

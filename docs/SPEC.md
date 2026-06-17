@@ -115,7 +115,8 @@ All spreads are expressed in **decimal** internally (e.g. 0.0025 = 25 bps) and c
 | `σ` | Annualised volatility of the FX rate between the two legs | fraction/yr |
 | `β` | **Flow imbalance** = net flow / gross flow ∈ [0,1] | — |
 | `f_venue` | Off-chain FX venue fee (Model A rebalancing) | fraction |
-| `f_redeem` | On-chain mint/redeem (face-value) fee (Models B/C) | fraction |
+| `f_redeem` | On-chain **redeem** (asset→cash, face-value) fee (Models B/C) | fraction |
+| `f_mint` | On-chain **mint** (cash→asset) fee; **0 by default** (issuer monetises float) | fraction |
 | `t_settle` | Time inventory is exposed during a rebalance | days |
 | `S_op` | Ramp operating spread (agents/servers/rails, amortised KYC) | fraction |
 | `m` | Residual competitive margin (≈0 on open book; may persist off-chain) | fraction |
@@ -171,7 +172,8 @@ Where:
   ```
 
   - Model A: `f_rebalance = f_venue` (~25 bps), `t_settle = t_settle_offchain` (days). **This term does not shrink with volume → no returns to scale.**
-  - Models B, C: `f_rebalance = f_redeem` (small, face-value), `t_settle = t_settle_onchain` (seconds). The duration term is negligible.
+  - Models B, C: the rebalance unwinds the surplus leg (`asset → cash`, a **redeem**, fee `f_redeem`) and restocks the deficit leg (`cash → asset`, a **mint**, fee `f_mint`). On-chain, **minting is free at face value** — the issuer monetises the float on minted assets and charges only on redemption (V6 §4.3) — so `f_mint = 0` by default and `f_rebalance · β = (f_redeem + f_mint)·β = f_redeem·β`. `t_settle = t_settle_onchain` (seconds); the duration term is negligible.
+  - The friction differential (Appendix B.4) therefore compares the **redeem leg only** (`f_redeem·β`) against the yield edge `ΔS`. Off-chain (Model A) the venue charges its fee on the trade regardless of direction, so there is no mint exemption.
 
 ### 3.3 The full all-in user cost per model
 
