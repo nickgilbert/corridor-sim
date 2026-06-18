@@ -47,6 +47,16 @@ yield-bearing reserved ramp; its edge over Model B is the **yield subsidy** `ΔS
 `docs/SPEC.md` is the authoritative build spec; section refs (§3.3, §7.2, §7.3, App. B) in code
 and tests point into it. The acceptance contract lives in `tests/` — keep those invariants green.
 
+## Docs — read these first for context
+
+- `docs/DESIGN_NOTES.md` — **the design narrative & decision log**: the thesis (yield is universally
+  cheaper; it compounds via a unified treasury hub), why each decision was made, the key findings
+  (yield and scale are the same 1/T lever; Point 2 rests on reserve-asset fungibility vs stablecoin
+  fragmentation), the assumptions register, and open questions. Start here for the "why."
+- `docs/SPEC.md` — the build spec (the "what": equations, parameters, acceptance criteria).
+- `docs/TODO.md` — deferred modeling work (spoke price-impact; fragmentation calibration).
+- `docs/report.html` — committed snapshot of the latest rendered report (regenerable).
+
 ## Conventions
 
 - Calibration fits `k_risk` to land median spreads inside the doc's regime bands (balanced
