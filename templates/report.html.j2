@@ -42,6 +42,61 @@
     {% endfor %}
   </div>
 
+  <details open style="margin-top:20px; border:1px solid var(--line); border-radius:6px; padding:6px 14px;">
+  <summary style="cursor:pointer; font-size:16px; font-weight:600; padding:6px 0;">Glossary — terms &amp; symbols</summary>
+
+  <h3 style="margin-top:10px">The architectures compared</h3>
+  <table>
+    <thead><tr><th>Model</th><th>What it is</th></tr></thead>
+    <tbody>
+      <tr><td><strong>A — incumbent</strong></td><td>Traditional ramp, off-chain FX venue. Denomination-mismatched (fiat + USDC), days-long rebalance, idle (0% yield) inventory. No returns to scale.</td></tr>
+      <tr><td><strong>B — stable/stable</strong></td><td>Denomination-matched local stablecoin ↔ USDC on an on-chain DEX. Seconds-long rebalance, but 0% yield inventory.</td></tr>
+      <tr><td><strong>C — reserved ramp</strong></td><td>Yield-bearing tokenized treasuries. <em>C-xborder</em> = yield↔yield (e.g. CETES↔USTRY, both legs earn). <em>C-same-denom</em> = yield↔stable (e.g. USTRY↔USDC, one yield leg).</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Cost terms (all in basis points, bps; 1 bp = 0.01%)</h3>
+  <table>
+    <thead><tr><th>Symbol</th><th>Name</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>C_total</code></td><td>All-in cost</td><td>What the user pays end-to-end: <code>S_ramp + S_fx</code>.</td></tr>
+      <tr><td><code>S_fx</code></td><td>FX spread</td><td>Cost of the currency conversion itself (margin + carry + risk + rebalance).</td></tr>
+      <tr><td><code>S_ramp</code></td><td>Ramp spread</td><td>On/off-ramp operating cost (KYC, rails), net of any inventory-yield credit.</td></tr>
+      <tr><td>ΔS</td><td>Yield subsidy</td><td>The edge a yield-earning maker can quote tighter: <code>ΔS = 2·y_daily / T</code>. Shrinks as turnover rises.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Model inputs</h3>
+  <table>
+    <thead><tr><th>Symbol</th><th>Name</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>T</code></td><td>Turnover (capital velocity)</td><td>Times per day the working capital recycles (= daily volume ÷ capital). Higher T = more flow per dollar of inventory → cheaper.</td></tr>
+      <tr><td>σ (<code>sigma</code>)</td><td>FX volatility</td><td>Annualised volatility of the currency pair. Drives the price-risk premium on held inventory.</td></tr>
+      <tr><td>β (<code>beta</code>)</td><td>Flow imbalance</td><td>Net ÷ gross flow ∈ [0,1]. 0 = perfectly two-sided; 1 = fully one-directional. The main adversary — it lengthens holding time and the rebalance fee.</td></tr>
+      <tr><td>ρ (<code>rho</code>)</td><td>Hurdle return on capital</td><td>The annual return the market maker requires on deployed inventory.</td></tr>
+      <tr><td><code>y_local</code></td><td>Local bond yield</td><td>Yield on the local tokenized treasury (e.g. CETES for Mexico).</td></tr>
+      <tr><td><code>y_ustry</code></td><td>US Treasury yield</td><td>Yield on the tokenized US treasury (USTRY).</td></tr>
+      <tr><td><code>f_redeem</code></td><td>Redeem fee</td><td>On-chain fee to convert a token back to cash (asset → cash). Charged on rebalancing imbalanced inventory.</td></tr>
+      <tr><td><code>f_mint</code></td><td>Mint fee</td><td>Fee to create a token from cash (cash → asset). <strong>Zero by default</strong> — issuers monetise the float on minted assets.</td></tr>
+      <tr><td><code>f_venue</code></td><td>Venue fee</td><td>Off-chain FX venue fee (Model A only, ~25 bps).</td></tr>
+      <tr><td><code>w</code></td><td>Inventory weight</td><td>Share of inventory on the first leg of the pair.</td></tr>
+      <tr><td><code>k_risk</code></td><td>Risk coefficient</td><td>Calibrated scalar converting a 1σ price move into the charged risk premium (fit to the regime bands).</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Network terms (§9)</h3>
+  <table>
+    <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><strong>USTRY</strong></td><td>Tokenized US Treasuries — the universal reserve/hub asset every corridor routes through.</td></tr>
+      <tr><td><strong>Hub / spoke</strong></td><td>Pools are <code>X ↔ USTRY</code> (X = a local bond, or USDC the dollar-exit). The shared <code>USTRY↔USDC</code> hub aggregates every corridor's flow.</td></tr>
+      <tr><td><strong>N</strong></td><td>Number of corridors live on the network.</td></tr>
+      <tr><td>β_hub</td><td>Hub imbalance — nets down as the network diversifies: <code>β_floor + (β₀−β_floor)/√N_eff</code>.</td></tr>
+      <tr><td><strong>Fragmentation</strong></td><td>How many stablecoins B's USDC hub splits across. More coins → shallower pools → no aggregation.</td></tr>
+    </tbody>
+  </table>
+  </details>
+
   <h2>1 · Executive summary</h2>
   <p class="sub">Median all-in cost <code>C_total</code> (bps) by model at mature turnover, per flow regime,
   for {{ primary }}. The reserved ramp (C) settles below stable/stable (B) by the yield subsidy, and both

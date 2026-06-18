@@ -233,6 +233,11 @@ def chart_tornado(cfg: Config, corridor: str, regime: str, T: float) -> str:
         high = c_total(lambda pp, n=name, v=hi: setattr(pp, n, v))
         swings.append((name, low, high))
 
+    labels = {
+        "sigma": "FX volatility (σ)", "beta": "flow imbalance (β)", "rho": "hurdle return (ρ)",
+        "y_local": "local bond yield", "y_ustry": "US Treasury yield", "w": "inventory weight",
+        "f_redeem": "redeem fee", "T": "turnover (T)",
+    }
     swings.sort(key=lambda s: abs(s[2] - s[1]))
     fig, ax = plt.subplots(figsize=(8, 4.5))
     y = np.arange(len(swings))
@@ -242,9 +247,9 @@ def chart_tornado(cfg: Config, corridor: str, regime: str, T: float) -> str:
         ax.barh(i, hi_v - lo_v, left=lo_v, color=col, alpha=0.8)
     ax.axvline(base, color="k", ls="--", lw=1, label=f"baseline {base:.1f} bps")
     ax.set_yticks(y)
-    ax.set_yticklabels([s[0] for s in swings])
-    ax.set_xlabel("C_total(C x-border) (bps)")
-    ax.set_title(f"Sensitivity tornado — {corridor}, {regime}, T={T:g}×")
+    ax.set_yticklabels([labels.get(s[0], s[0]) for s in swings])
+    ax.set_xlabel("All-in cost C_total — reserved ramp C (bps)")
+    ax.set_title(f"What moves the reserved ramp's cost most — {corridor}, {regime}, turnover {T:g}×")
     ax.legend(fontsize=8)
     ax.grid(axis="x", alpha=0.25)
     return _fig_to_b64(fig)
